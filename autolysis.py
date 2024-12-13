@@ -1,9 +1,23 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "matplotlib",
+#     "numpy",
+#     "pandas",
+#     "seaborn",
+#     "requests",
+#     "scipy",
+# ]
+# ///
+
 import os
 import sys
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import requests
+import numpy as np
+from scipy import stats
 
 # Ensure the environment variable for AI Proxy token is set
 AIPROXY_TOKEN = os.getenv("AIPROXY_TOKEN")
@@ -27,15 +41,26 @@ def load_dataset(file_path):
 
 def analyze_dataset(df):
     """
-    Generates a basic analysis of the dataset, including column info,
-    data types, summary statistics, and missing value counts.
+    Generates a comprehensive analysis of the dataset, including column info,
+    data types, summary statistics, missing value counts, skewness, and outlier detection.
     """
     analysis = {
         "columns": list(df.columns),
         "dtypes": df.dtypes.apply(str).to_dict(),
         "summary_stats": df.describe(include='all', percentiles=[]).to_dict(),
-        "missing_values": df.isnull().sum().to_dict()
+        "missing_values": df.isnull().sum().to_dict(),
+        "skewness": df.skew(numeric_only=True).to_dict(),
+        "outliers": {}
     }
+    
+    # Detect outliers using Z-score
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        col_data = df[col].dropna()  # Drop NaN values
+        z_scores = np.abs(stats.zscore(col_data))
+        outliers = col_data[z_scores > 3].index  # Get the indices of outliers
+        analysis["outliers"][col] = df.loc[outliers, col].tolist()  # Fetch outlier values
+    
     return analysis
 
 def generate_visualizations(df, output_dir):
@@ -77,24 +102,42 @@ def generate_visualizations(df, output_dir):
 
 def narrate_story(analysis, output_dir):
     """
-    Generates a narrative using the LLM based on dataset analysis and writes it to a Markdown file.
+    Generates a narrative using the LLM based on dataset analysis and writes it to a Markdown file,
+    including explanations of only existing visualizations.
     """
     headers = {
         "Authorization": f"Bearer {AIPROXY_TOKEN}",
         "Content-Type": "application/json"
     }
-    # Dynamically construct the prompt with key highlights
+
+    # Paths to images in the output_dir
+    correlation_heatmap_path = os.path.join(output_dir, "correlation_heatmap.png")
+    existing_distribution_images = []
+
+    # Check for existing distribution images
+    for column in analysis["dtypes"].keys():
+        dist_path = os.path.join(output_dir, f"{column}_distribution.png")
+        if os.path.exists(dist_path):
+            existing_distribution_images.append((column, os.path.basename(dist_path)))
+
+    # Construct the prompt
     prompt = (
         f"The dataset contains the following columns: {', '.join(analysis['columns'])}.\n"
-        f"There are missing values in {sum(v > 0 for v in analysis['missing_values'].values())} columns.\n"
+        f"Missing values are found in {sum(v > 0 for v in analysis['missing_values'].values())} columns.\n"
         f"Summary statistics:\n{pd.DataFrame(analysis['summary_stats']).to_string()}\n"
-        f"Please generate a Markdown-formatted narrative that highlights the key insights, "
-        f"potential data quality issues, and possible implications."
+        f"Key insights from the analysis include skewness in numeric columns, detected outliers, and correlations.\n"
+        f"Additionally, the following visualizations were generated:\n"
     )
+    if os.path.exists(correlation_heatmap_path):
+        prompt += f"- **Correlation Heatmap**: A heatmap visualizing correlations between numeric columns.\n"
+    if existing_distribution_images:
+        prompt += "- **Distribution Plots**: Distribution plots for numeric columns showing data spread and potential skewness.\n"
+
+    # Request narrative generation
     data = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "system", "content": "You are a data scientist writing a detailed dataset analysis report."},
+            {"role": "system", "content": "You are a data scientist writing a detailed dataset analysis report with visualizations."},
             {"role": "user", "content": prompt}
         ]
     }
@@ -105,15 +148,34 @@ def narrate_story(analysis, output_dir):
         headers=headers,
         json=data
     )
-    story = "Error generating narrative."
     if response.status_code == 200:
         response_data = response.json()
         story = response_data['choices'][0]['message']['content']
     else:
         print("Error:", response.status_code, response.text)
+        story = "Error generating narrative."
+
+    # Append details about visualizations to the narrative
+    story += "\n\n## Visualizations\n"
+
+    if os.path.exists(correlation_heatmap_path):
+        story += (
+            "### Correlation Heatmap\n"
+            "The correlation heatmap shows the relationship between numeric columns, helping to identify multicollinearity.\n"
+            "![Correlation Heatmap](correlation_heatmap.png)\n\n"
+        )
+
+    if existing_distribution_images:
+        story += "### Distribution Plots\n"
+        for column, img_name in existing_distribution_images:
+            story += (
+                f"- **{column}**: The distribution plot shows insights about the spread, skewness, and possible outliers.\n"
+                f"![Distribution of {column}]({img_name})\n"
+            )
 
     # Write narrative to README.md
-    with open(os.path.join(output_dir, "README.md"), "w") as f:
+    readme_path = os.path.join(output_dir, "README.md")
+    with open(readme_path, "w", encoding="utf-8") as f:
         f.write(story)
 
 def analyze_and_generate_output(file_path):
