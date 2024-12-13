@@ -40,12 +40,12 @@ The correlation heatmap reveals the interrelationships among the numeric columns
    - The **overall rating** shows a positive correlation with **quality**, which is expected as content rated higher in quality typically receives better overall ratings.
    - The **repeatability** metric shows a weaker correlation with both ratings, indicating this measure may not relate strongly with how content is perceived overall or in terms of quality.
 
-   ![Correlation Heatmap](.\media\correlation_heatmap.png)
+   ![Correlation Heatmap](.\correlation_heatmap.png)
 
 2. **Distribution Plot**: 
    The distribution plots for the **overall** and **quality** ratings further depict the spread of data, highlighting that both columns exhibit a left-skewed distribution. Most ratings tend to cluster around the higher end of the scoring range.
 
-   ![Overall Distribution Plot](.\media\overall_distribution.png)
+   ![Overall Distribution Plot](.\overall_distribution.png)
 
 ## Implications of Visualizations
 
@@ -56,7 +56,7 @@ These visualizations provide a robust framework for understanding the underlying
 ## Potential Data Quality Issues
 
 The presence of missing values in two columns could impact the integrity of the dataset and lead to biases in the analysis. It is pivotal to:
-- Investigate the nature of these missing values—whether they are missing at random or if a pattern exists.
+- Investigate the nature of these missing valuesâ€”whether they are missing at random or if a pattern exists.
 - Consider strategies such as imputation, removal, or analysis based on the non-missing subset of data to minimize potential biases in the results.
 
 ### Conclusion
